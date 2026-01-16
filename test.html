@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Web Tuner Test Page</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        h1 {
+            color: #333;
+        }
+        .controls {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        button {
+            padding: 10px 20px;
+            font-size: 16px;
+            margin: 5px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            background: #667eea;
+            color: white;
+        }
+        button:hover {
+            background: #5568d3;
+        }
+        .info {
+            background: #e3f2fd;
+            padding: 15px;
+            border-radius: 5px;
+            border-left: 4px solid #2196f3;
+        }
+        select {
+            padding: 8px;
+            font-size: 16px;
+            margin: 10px 0;
+        }
+    </style>
+</head>
+<body>
+    <h1>🎵 Web Tuner Test Page</h1>
+    
+    <div class="info">
+        <strong>Instructions:</strong>
+        <ol>
+            <li>Click one of the buttons below to play a test tone</li>
+            <li>Click the Web Tuner extension icon in your browser toolbar</li>
+            <li>Click "Start Tuner" in the popup</li>
+            <li>The tuner should detect the note being played</li>
+        </ol>
+    </div>
+
+    <div class="controls">
+        <h2>Test Tones</h2>
+        <p>Play different notes to test the tuner:</p>
+        
+        <button onclick="playNote(440)">A4 (440 Hz)</button>
+        <button onclick="playNote(261.63)">C4 (Middle C)</button>
+        <button onclick="playNote(329.63)">E4</button>
+        <button onclick="playNote(392.00)">G4</button>
+        <button onclick="playNote(523.25)">C5</button>
+        <button onclick="stopNote()">Stop</button>
+        
+        <h3>Custom Frequency</h3>
+        <select id="noteSelect" onchange="playSelectedNote()">
+            <option value="">-- Select a note --</option>
+            <option value="82.41">E2</option>
+            <option value="110.00">A2</option>
+            <option value="146.83">D3</option>
+            <option value="196.00">G3</option>
+            <option value="261.63">C4 (Middle C)</option>
+            <option value="329.63">E4</option>
+            <option value="392.00">G4</option>
+            <option value="440.00">A4</option>
+            <option value="493.88">B4</option>
+            <option value="523.25">C5</option>
+            <option value="659.25">E5</option>
+            <option value="783.99">G5</option>
+        </select>
+        
+        <div style="margin-top: 15px;">
+            <label>Detune (cents): <input type="range" id="detune" min="-50" max="50" value="0" oninput="updateDetune()"> 
+                <span id="detuneValue">0</span> cents
+            </label>
+        </div>
+    </div>
+
+    <script>
+        let audioContext = null;
+        let oscillator = null;
+        let gainNode = null;
+
+        function initAudio() {
+            if (!audioContext) {
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            }
+        }
+
+        function playNote(frequency) {
+            initAudio();
+            stopNote();
+
+            oscillator = audioContext.createOscillator();
+            gainNode = audioContext.createGain();
+
+            oscillator.type = 'sine';
+            oscillator.frequency.value = frequency;
+            
+            const detuneValue = document.getElementById('detune').value;
+            oscillator.detune.value = detuneValue;
+
+            gainNode.gain.value = 0.3;
+
+            oscillator.connect(gainNode);
+            gainNode.connect(audioContext.destination);
+
+            oscillator.start();
+            
+            console.log(`Playing ${frequency} Hz with ${detuneValue} cents detune`);
+        }
+
+        function stopNote() {
+            if (oscillator) {
+                oscillator.stop();
+                oscillator = null;
+            }
+        }
+
+        function playSelectedNote() {
+            const select = document.getElementById('noteSelect');
+            const frequency = parseFloat(select.value);
+            if (frequency) {
+                playNote(frequency);
+            }
+        }
+
+        function updateDetune() {
+            const detuneValue = document.getElementById('detune').value;
+            document.getElementById('detuneValue').textContent = detuneValue;
+            
+            if (oscillator) {
+                oscillator.detune.value = detuneValue;
+            }
+        }
+
+        // Clean up on page unload
+        window.addEventListener('beforeunload', stopNote);
+    </script>
+</body>
+</html>
