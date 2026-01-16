@@ -45,6 +45,15 @@ A Chromium extension that detects the pitch currently playing in your browser an
 - The tuner works best with frequencies between 80 Hz and 2000 Hz
 - If no signal is detected, the display will show "No signal"
 
+### Testing with test.html
+
+For testing purposes, open `test.html` in your browser. This page includes:
+- Preset note buttons (A4, C4, E4, G4, C5)
+- Custom note selection dropdown
+- Detune control to test cents detection (±50 cents)
+
+Simply open the file, play a tone, and activate the tuner extension!
+
 ## How It Works
 
 The extension uses the Web Audio API to:
