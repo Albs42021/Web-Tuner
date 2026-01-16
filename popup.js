@@ -4,6 +4,8 @@ let analyser = null;
 let mediaStream = null;
 let animationFrameId = null;
 let isRunning = false;
+let lastFrequency = -1;
+let frequencyHistory = [];
 
 // UI Elements
 const startBtn = document.getElementById('startBtn');
@@ -50,7 +52,7 @@ async function startTuner() {
     audioContext = new AudioContext();
     analyser = audioContext.createAnalyser();
     analyser.fftSize = 8192; // Higher FFT size for better low-frequency resolution
-    analyser.smoothingTimeConstant = 0.8;
+    analyser.smoothingTimeConstant = 0.3; // Lower smoothing for faster response
     
     const source = audioContext.createMediaStreamSource(mediaStream);
     source.connect(analyser);
@@ -91,10 +93,12 @@ function stopTuner() {
   tunerDiv.style.display = 'none';
   statusDiv.textContent = 'Click "Start" to begin tuning';
   
-  // Clear displays
+  // Clear displays and history
   noteDisplay.textContent = '-';
   frequencyDisplay.textContent = '- Hz';
   centsDisplay.textContent = '-';
+  lastFrequency = -1;
+  frequencyHistory = [];
   clearGraph();
 }
 
@@ -121,12 +125,15 @@ function detectPitch() {
     const frequency = autoCorrelate(buffer, audioContext.sampleRate);
     
     if (frequency > 0) {
-      const note = frequencyToNote(frequency);
-      const cents = frequencyToCents(frequency, note.frequency);
+      // Apply temporal smoothing to reduce jitter
+      const smoothedFrequency = smoothFrequency(frequency);
+      
+      const note = frequencyToNote(smoothedFrequency);
+      const cents = frequencyToCents(smoothedFrequency, note.frequency);
       
       // Update displays
       noteDisplay.textContent = note.name + note.octave;
-      frequencyDisplay.textContent = frequency.toFixed(2) + ' Hz';
+      frequencyDisplay.textContent = smoothedFrequency.toFixed(2) + ' Hz';
       
       let centsText = '';
       if (Math.abs(cents) < 5) {
@@ -159,11 +166,16 @@ function detectPitch() {
 function autoCorrelate(buffer, sampleRate) {
   const SIZE = buffer.length;
   const MAX_SAMPLES = Math.floor(SIZE / 2);
-  let best_offset = -1;
-  let best_correlation = 0;
-  let rms = 0;
+  
+  // Define frequency range constraints (82 Hz to 1000 Hz)
+  // This prevents detecting very low frequencies that cause octave errors
+  const MIN_FREQUENCY = 82; // E2
+  const MAX_FREQUENCY = 1000; // B5
+  const MAX_OFFSET = Math.floor(sampleRate / MIN_FREQUENCY);
+  const MIN_OFFSET = Math.floor(sampleRate / MAX_FREQUENCY);
   
   // Calculate RMS
+  let rms = 0;
   for (let i = 0; i < SIZE; i++) {
     const val = buffer[i];
     rms += val * val;
@@ -172,33 +184,107 @@ function autoCorrelate(buffer, sampleRate) {
   
   if (rms < 0.01) return -1; // Not enough signal
   
-  // Find the best offset
-  let lastCorrelation = 1;
-  for (let offset = 1; offset < MAX_SAMPLES; offset++) {
+  // Normalize the buffer
+  const normalizedBuffer = new Float32Array(SIZE);
+  for (let i = 0; i < SIZE; i++) {
+    normalizedBuffer[i] = buffer[i] / rms;
+  }
+  
+  let best_offset = -1;
+  let best_correlation = 0;
+  
+  // Search for the best autocorrelation within frequency constraints
+  for (let offset = MIN_OFFSET; offset < Math.min(MAX_OFFSET, MAX_SAMPLES); offset++) {
     let correlation = 0;
     
+    // Calculate autocorrelation for this offset
     for (let i = 0; i < MAX_SAMPLES; i++) {
-      correlation += Math.abs(buffer[i] - buffer[i + offset]);
+      correlation += normalizedBuffer[i] * normalizedBuffer[i + offset];
     }
     
-    correlation = 1 - (correlation / MAX_SAMPLES);
+    correlation = correlation / MAX_SAMPLES;
     
-    if (correlation > 0.9 && correlation > lastCorrelation) {
-      if (correlation > best_correlation) {
-        best_correlation = correlation;
-        best_offset = offset;
+    // Look for strong positive correlation
+    if (correlation > best_correlation) {
+      best_correlation = correlation;
+      best_offset = offset;
+    }
+  }
+  
+  // Require a strong correlation to avoid spurious detections
+  // Higher threshold reduces false positives and octave errors
+  if (best_correlation > 0.5 && best_offset !== -1) {
+    // Refine the period estimate using parabolic interpolation
+    let refined_offset = best_offset;
+    
+    if (best_offset > MIN_OFFSET && best_offset < MAX_OFFSET - 1) {
+      // Calculate correlation at neighboring offsets
+      let c1 = 0, c2 = 0, c3 = 0;
+      
+      for (let i = 0; i < MAX_SAMPLES; i++) {
+        c1 += normalizedBuffer[i] * normalizedBuffer[i + best_offset - 1];
+        c2 += normalizedBuffer[i] * normalizedBuffer[i + best_offset];
+        c3 += normalizedBuffer[i] * normalizedBuffer[i + best_offset + 1];
+      }
+      
+      c1 /= MAX_SAMPLES;
+      c2 /= MAX_SAMPLES;
+      c3 /= MAX_SAMPLES;
+      
+      // Parabolic interpolation
+      const delta = 0.5 * (c1 - c3) / (c1 - 2 * c2 + c3);
+      if (!isNaN(delta) && Math.abs(delta) < 1) {
+        refined_offset = best_offset + delta;
       }
     }
     
-    lastCorrelation = correlation;
-  }
-  
-  if (best_correlation > 0.01 && best_offset !== -1) {
-    const frequency = sampleRate / best_offset;
-    return frequency;
+    const frequency = sampleRate / refined_offset;
+    
+    // Double-check frequency is in valid range
+    if (frequency >= MIN_FREQUENCY && frequency <= MAX_FREQUENCY) {
+      return frequency;
+    }
   }
   
   return -1;
+}
+
+// Smooth frequency readings over time to reduce jitter
+function smoothFrequency(frequency) {
+  const HISTORY_SIZE = 5;
+  const SMOOTHING_FACTOR = 0.7;
+  
+  // Add to history
+  frequencyHistory.push(frequency);
+  if (frequencyHistory.length > HISTORY_SIZE) {
+    frequencyHistory.shift();
+  }
+  
+  // If we have a previous reading, apply weighted average
+  if (lastFrequency > 0) {
+    // Check if the new frequency is within a reasonable range of the last one
+    // This prevents sudden octave jumps
+    const ratio = frequency / lastFrequency;
+    
+    // If the ratio is close to 0.5, 2, 4, etc., it might be an octave error
+    // In such cases, prefer the previous frequency with stronger smoothing
+    if (Math.abs(ratio - 0.5) < 0.1 || Math.abs(ratio - 2.0) < 0.2) {
+      // Likely octave error, heavily favor previous frequency
+      frequency = lastFrequency * 0.9 + frequency * 0.1;
+    } else if (Math.abs(ratio - 1.0) < 0.5) {
+      // Normal variation, apply standard smoothing
+      frequency = lastFrequency * SMOOTHING_FACTOR + frequency * (1 - SMOOTHING_FACTOR);
+    } else {
+      // Large jump - might be a real note change, use median of recent history
+      if (frequencyHistory.length >= 3) {
+        const sorted = [...frequencyHistory].sort((a, b) => a - b);
+        frequency = sorted[Math.floor(sorted.length / 2)];
+      }
+    }
+  }
+  
+  lastFrequency = frequency;
+  return frequency;
 }
 
 // Convert frequency to note name and octave
