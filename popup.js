@@ -174,6 +174,10 @@ function autoCorrelate(buffer, sampleRate) {
   const MAX_OFFSET = Math.floor(sampleRate / MIN_FREQUENCY);
   const MIN_OFFSET = Math.floor(sampleRate / MAX_FREQUENCY);
   
+  // Correlation threshold for valid pitch detection
+  // Higher threshold reduces false positives from noise
+  const CORRELATION_THRESHOLD = 0.5;
+  
   // Calculate RMS
   let rms = 0;
   for (let i = 0; i < SIZE; i++) {
@@ -216,7 +220,7 @@ function autoCorrelate(buffer, sampleRate) {
     const next = correlations[offset + 1];
     
     // Look for local maxima (peaks)
-    if (current > prev && current > next && current > 0.5) {
+    if (current > prev && current > next && current > CORRELATION_THRESHOLD) {
       // This is a peak with strong correlation
       // Check if it's better than what we've found
       if (current > best_correlation) {
@@ -242,7 +246,7 @@ function autoCorrelate(buffer, sampleRate) {
   }
   
   // Require a strong correlation to avoid spurious detections
-  if (best_correlation > 0.5 && best_offset !== -1) {
+  if (best_correlation > CORRELATION_THRESHOLD && best_offset !== -1) {
     // Refine the period estimate using parabolic interpolation
     let refined_offset = best_offset;
     
@@ -271,13 +275,16 @@ function autoCorrelate(buffer, sampleRate) {
 
 // Smooth frequency readings over time to reduce jitter
 function smoothFrequency(frequency) {
-  const HISTORY_SIZE = 5;
-  const SMOOTHING_FACTOR = 0.7;
+  // Keep a rolling history to detect trends and filter noise
+  const HISTORY_SIZE = 5; // 5 samples provides good balance between responsiveness and stability
+  // Higher smoothing = more stable but slower response
+  const SMOOTHING_FACTOR = 0.7; // 0.7 gives smooth readings while still tracking pitch changes
   
   // Octave error detection thresholds
-  // If ratio is close to 0.5, it's likely detecting one octave below
+  // Different thresholds because:
+  // - Octave down (0.5 ratio) is less common, so we use tighter threshold (0.1)
+  // - Octave up (2.0 ratio) happens more often with harmonics, so we use looser threshold (0.2)
   const OCTAVE_DOWN_THRESHOLD = 0.1; // Tolerance around 0.5 ratio
-  // If ratio is close to 2.0, it's likely detecting one octave above
   const OCTAVE_UP_THRESHOLD = 0.2; // Tolerance around 2.0 ratio
   
   // Add to history
