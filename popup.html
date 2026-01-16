@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Web Tuner</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="container">
+    <h1>Web Tuner</h1>
+    
+    <div id="status" class="status">Click "Start" to begin tuning</div>
+    
+    <button id="startBtn" class="btn">Start Tuner</button>
+    <button id="stopBtn" class="btn" style="display: none;">Stop Tuner</button>
+    
+    <div id="tuner" class="tuner-display" style="display: none;">
+      <div class="note-display">
+        <div class="note-label">Note:</div>
+        <div id="note" class="note">-</div>
+      </div>
+      
+      <div class="frequency-display">
+        <div class="frequency-label">Frequency:</div>
+        <div id="frequency" class="frequency">- Hz</div>
+      </div>
+      
+      <div class="cents-display">
+        <div class="cents-label">Tuning:</div>
+        <div id="cents" class="cents">-</div>
+      </div>
+      
+      <canvas id="tunerGraph" width="400" height="100"></canvas>
+    </div>
+  </div>
+  
+  <script src="popup.js"></script>
+</body>
+</html>
