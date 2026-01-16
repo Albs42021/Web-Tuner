@@ -190,46 +190,64 @@ function autoCorrelate(buffer, sampleRate) {
     normalizedBuffer[i] = buffer[i] / rms;
   }
   
-  let best_offset = -1;
-  let best_correlation = 0;
+  // Calculate autocorrelation for all offsets
+  const correlations = new Float32Array(Math.min(MAX_OFFSET, MAX_SAMPLES));
   
-  // Search for the best autocorrelation within frequency constraints
   for (let offset = MIN_OFFSET; offset < Math.min(MAX_OFFSET, MAX_SAMPLES); offset++) {
     let correlation = 0;
     
-    // Calculate autocorrelation for this offset
     for (let i = 0; i < MAX_SAMPLES; i++) {
       correlation += normalizedBuffer[i] * normalizedBuffer[i + offset];
     }
     
-    correlation = correlation / MAX_SAMPLES;
+    correlations[offset] = correlation / MAX_SAMPLES;
+  }
+  
+  // Find peaks in the correlation function
+  let best_offset = -1;
+  let best_correlation = 0;
+  
+  // Start looking from MIN_OFFSET, but skip the initial section to avoid DC component
+  for (let offset = MIN_OFFSET + 1; offset < Math.min(MAX_OFFSET, MAX_SAMPLES) - 1; offset++) {
+    const current = correlations[offset];
+    const prev = correlations[offset - 1];
+    const next = correlations[offset + 1];
     
-    // Look for strong positive correlation
-    if (correlation > best_correlation) {
-      best_correlation = correlation;
-      best_offset = offset;
+    // Look for local maxima (peaks)
+    if (current > prev && current > next && current > 0.5) {
+      // This is a peak with strong correlation
+      // Check if it's better than what we've found
+      if (current > best_correlation) {
+        best_correlation = current;
+        best_offset = offset;
+      }
+      // If we found a strong peak, we can stop searching
+      // (the first strong peak is usually the fundamental)
+      if (current > 0.9) {
+        break;
+      }
+    }
+  }
+  
+  // If no peaks found, fall back to global maximum
+  if (best_offset === -1) {
+    for (let offset = MIN_OFFSET; offset < Math.min(MAX_OFFSET, MAX_SAMPLES); offset++) {
+      if (correlations[offset] > best_correlation) {
+        best_correlation = correlations[offset];
+        best_offset = offset;
+      }
     }
   }
   
   // Require a strong correlation to avoid spurious detections
-  // Higher threshold reduces false positives and octave errors
   if (best_correlation > 0.5 && best_offset !== -1) {
     // Refine the period estimate using parabolic interpolation
     let refined_offset = best_offset;
     
-    if (best_offset > MIN_OFFSET && best_offset < MAX_OFFSET - 1) {
-      // Calculate correlation at neighboring offsets
-      let c1 = 0, c2 = 0, c3 = 0;
-      
-      for (let i = 0; i < MAX_SAMPLES; i++) {
-        c1 += normalizedBuffer[i] * normalizedBuffer[i + best_offset - 1];
-        c2 += normalizedBuffer[i] * normalizedBuffer[i + best_offset];
-        c3 += normalizedBuffer[i] * normalizedBuffer[i + best_offset + 1];
-      }
-      
-      c1 /= MAX_SAMPLES;
-      c2 /= MAX_SAMPLES;
-      c3 /= MAX_SAMPLES;
+    if (best_offset > MIN_OFFSET && best_offset < Math.min(MAX_OFFSET, MAX_SAMPLES) - 1) {
+      const c1 = correlations[best_offset - 1];
+      const c2 = correlations[best_offset];
+      const c3 = correlations[best_offset + 1];
       
       // Parabolic interpolation
       const delta = 0.5 * (c1 - c3) / (c1 - 2 * c2 + c3);
