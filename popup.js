@@ -183,8 +183,7 @@ function autoCorrelate(buffer, sampleRate) {
     correlation = 1 - (correlation / MAX_SAMPLES);
     
     if (correlation > 0.9 && correlation > lastCorrelation) {
-      const foundGoodCorrelation = correlation > best_correlation;
-      if (foundGoodCorrelation) {
+      if (correlation > best_correlation) {
         best_correlation = correlation;
         best_offset = offset;
       }

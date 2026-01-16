@@ -147,7 +147,7 @@
 
         function updateDetune() {
             const detuneValue = document.getElementById('detune').value;
-            document.getElementById('detuneValue').value = detuneValue;
+            document.getElementById('detuneValue').textContent = detuneValue;
             
             if (oscillator) {
                 oscillator.detune.value = detuneValue;
