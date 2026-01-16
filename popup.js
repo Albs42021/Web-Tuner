@@ -54,6 +54,7 @@ async function startTuner() {
     
     const source = audioContext.createMediaStreamSource(mediaStream);
     source.connect(analyser);
+    analyser.connect(audioContext.destination); // Allow audio to pass through to speakers
     
     isRunning = true;
     startBtn.style.display = 'none';
