@@ -190,10 +190,12 @@ function autoCorrelate(buffer, sampleRate) {
     normalizedBuffer[i] = buffer[i] / rms;
   }
   
-  // Calculate autocorrelation for all offsets
-  const correlations = new Float32Array(Math.min(MAX_OFFSET, MAX_SAMPLES));
+  // Calculate autocorrelation for all offsets in valid range
+  // Store correlations indexed by offset for easier access
+  const maxOffset = Math.min(MAX_OFFSET, MAX_SAMPLES);
+  const correlations = new Float32Array(maxOffset);
   
-  for (let offset = MIN_OFFSET; offset < Math.min(MAX_OFFSET, MAX_SAMPLES); offset++) {
+  for (let offset = MIN_OFFSET; offset < maxOffset; offset++) {
     let correlation = 0;
     
     for (let i = 0; i < MAX_SAMPLES; i++) {
@@ -208,7 +210,7 @@ function autoCorrelate(buffer, sampleRate) {
   let best_correlation = 0;
   
   // Start looking from MIN_OFFSET, but skip the initial section to avoid DC component
-  for (let offset = MIN_OFFSET + 1; offset < Math.min(MAX_OFFSET, MAX_SAMPLES) - 1; offset++) {
+  for (let offset = MIN_OFFSET + 1; offset < maxOffset - 1; offset++) {
     const current = correlations[offset];
     const prev = correlations[offset - 1];
     const next = correlations[offset + 1];
@@ -231,7 +233,7 @@ function autoCorrelate(buffer, sampleRate) {
   
   // If no peaks found, fall back to global maximum
   if (best_offset === -1) {
-    for (let offset = MIN_OFFSET; offset < Math.min(MAX_OFFSET, MAX_SAMPLES); offset++) {
+    for (let offset = MIN_OFFSET; offset < maxOffset; offset++) {
       if (correlations[offset] > best_correlation) {
         best_correlation = correlations[offset];
         best_offset = offset;
@@ -244,7 +246,7 @@ function autoCorrelate(buffer, sampleRate) {
     // Refine the period estimate using parabolic interpolation
     let refined_offset = best_offset;
     
-    if (best_offset > MIN_OFFSET && best_offset < Math.min(MAX_OFFSET, MAX_SAMPLES) - 1) {
+    if (best_offset > MIN_OFFSET && best_offset < maxOffset - 1) {
       const c1 = correlations[best_offset - 1];
       const c2 = correlations[best_offset];
       const c3 = correlations[best_offset + 1];
@@ -272,6 +274,12 @@ function smoothFrequency(frequency) {
   const HISTORY_SIZE = 5;
   const SMOOTHING_FACTOR = 0.7;
   
+  // Octave error detection thresholds
+  // If ratio is close to 0.5, it's likely detecting one octave below
+  const OCTAVE_DOWN_THRESHOLD = 0.1; // Tolerance around 0.5 ratio
+  // If ratio is close to 2.0, it's likely detecting one octave above
+  const OCTAVE_UP_THRESHOLD = 0.2; // Tolerance around 2.0 ratio
+  
   // Add to history
   frequencyHistory.push(frequency);
   if (frequencyHistory.length > HISTORY_SIZE) {
@@ -286,7 +294,7 @@ function smoothFrequency(frequency) {
     
     // If the ratio is close to 0.5, 2, 4, etc., it might be an octave error
     // In such cases, prefer the previous frequency with stronger smoothing
-    if (Math.abs(ratio - 0.5) < 0.1 || Math.abs(ratio - 2.0) < 0.2) {
+    if (Math.abs(ratio - 0.5) < OCTAVE_DOWN_THRESHOLD || Math.abs(ratio - 2.0) < OCTAVE_UP_THRESHOLD) {
       // Likely octave error, heavily favor previous frequency
       frequency = lastFrequency * 0.9 + frequency * 0.1;
     } else if (Math.abs(ratio - 1.0) < 0.5) {
